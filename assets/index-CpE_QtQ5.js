@@ -388,6 +388,10 @@ const LocalStorage = {
   }
 };
 const state = {
+  currentRestaurantListId: "allRestaurant",
+  setCurrentRestaurantListId(restaurantListId) {
+    this.currentRestaurantListId = restaurantListId;
+  },
   currentRestaurantList: [],
   setCurrentRestaurantList(restaurantList) {
     this.currentRestaurantList = restaurantList;
@@ -490,11 +494,14 @@ const DetailModalContent = {
     }
   },
   renderAll() {
-    FilterSelect.applyFilter("allRestaurant");
-    const favoriteRestaurantList = RestaurantListUtils.getFavoriteList(
-      LocalStorage.getJSON(RESTAURANT_LIST_KEY)
-    );
-    RestaurantList.applyList("favoriteRestaurant", favoriteRestaurantList);
+    if (state.currentRestaurantListId === "allRestaurant")
+      FilterSelect.applyFilter("allRestaurant");
+    if (state.currentRestaurantListId === "favoriteRestaurant") {
+      const favoriteRestaurantList = RestaurantListUtils.getFavoriteList(
+        LocalStorage.getJSON(RESTAURANT_LIST_KEY)
+      );
+      RestaurantList.applyList("favoriteRestaurant", favoriteRestaurantList);
+    }
   }
 };
 const LunchInfoCard = {
@@ -528,10 +535,6 @@ const LunchInfoCard = {
       });
     });
     return LunchInfoCardElement;
-  },
-  onClickFavorite(id, event) {
-  },
-  onClickCard(id, event) {
   }
 };
 const RestaurantList = {
@@ -807,6 +810,7 @@ function initNavigationButton() {
       FilterSelect.applyFilter("allRestaurant");
       DOM.$filterContainer.style.display = "flex";
       DOM.$restaurantContainer.style.display = "block";
+      state.setCurrentRestaurantListId("allRestaurant");
     }
     if (e.target.classList.contains("favorite_restaurant_nav")) {
       const favoriteRestaurantList = RestaurantListUtils.getFavoriteList(
@@ -814,6 +818,7 @@ function initNavigationButton() {
       );
       RestaurantList.applyList("favoriteRestaurant", favoriteRestaurantList);
       DOM.$favoriteContainer.style.display = "block";
+      state.setCurrentRestaurantListId("favoriteRestaurant");
     }
     $$(".navigation__button").forEach(
       (btn) => btn.classList.remove("activated")
