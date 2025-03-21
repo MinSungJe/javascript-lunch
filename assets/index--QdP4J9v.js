@@ -351,12 +351,10 @@ const RestaurantListUtils = {
     return restaurantList.filter(({ label }) => label === category);
   },
   sortById(restaurantList) {
-    const resultList = [...restaurantList];
-    return resultList.sort((a, b) => a.id - b.id);
+    return restaurantList.sort((a, b) => a.id - b.id);
   },
   sortByName(restaurantList) {
-    const resultList = [...restaurantList];
-    return resultList.sort((a, b) => {
+    return restaurantList.sort((a, b) => {
       const nameA = a.name.toUpperCase();
       const nameB = b.name.toUpperCase();
       if (nameA < nameB) return -1;
@@ -365,8 +363,7 @@ const RestaurantListUtils = {
     });
   },
   sortByDistance(restaurantList) {
-    const resultList = [...restaurantList];
-    return resultList.sort((a, b) => a.distance - b.distance);
+    return restaurantList.sort((a, b) => a.distance - b.distance);
   },
   favoriteById(restaurantList, id) {
     return restaurantList.map(
@@ -387,14 +384,47 @@ const LocalStorage = {
     return null;
   }
 };
-const state = {
-  currentRestaurantListId: "allRestaurant",
-  setCurrentRestaurantListId(restaurantListId) {
-    this.currentRestaurantListId = restaurantListId;
+const FilterSelect = {
+  create({ id, name, dropdownList }) {
+    const filterElement = document.createElement("select");
+    filterElement.id = id;
+    filterElement.name = name;
+    filterElement.classList.add("restaurant-filter");
+    filterElement.innerHTML = /*html*/
+    `
+    ${dropdownList.map(({ label, value }) => `<option value="${value}">${label}</option>`).join("\n")}
+    `;
+    filterElement.addEventListener(
+      "change",
+      (e) => Renderer.filteredList("allRestaurant")
+    );
+    return filterElement;
   },
-  currentRestaurantList: [],
-  setCurrentRestaurantList(restaurantList) {
-    this.currentRestaurantList = restaurantList;
+  getFilteredList() {
+    const category = $("#category-filter").value;
+    const sortingRule = $("#sorting-filter").value;
+    const filteredListByCategory = FilterSelect.getFilteredListByCategory(
+      LocalStorage.getJSON(RESTAURANT_LIST_KEY),
+      category
+    );
+    const filteredListByBoth = FilterSelect.getFilteredListBySorting(
+      filteredListByCategory,
+      sortingRule
+    );
+    return filteredListByBoth;
+  },
+  getFilteredListByCategory(restaurantList, category) {
+    return RestaurantListUtils.filterByCategory(restaurantList, category);
+  },
+  getFilteredListBySorting(restaurantList, sortingRule) {
+    let filteredList = [...restaurantList];
+    if (sortingRule === "id")
+      filteredList = RestaurantListUtils.sortById(filteredList);
+    if (sortingRule === "name")
+      filteredList = RestaurantListUtils.sortByName(filteredList);
+    if (sortingRule === "distance")
+      filteredList = RestaurantListUtils.sortByDistance(filteredList);
+    return filteredList;
   }
 };
 const DetailModalButtonContainer = {
@@ -405,7 +435,8 @@ const DetailModalButtonContainer = {
       TextButton.create(
         {
           id: "delete__button",
-          title: "삭제하기"
+          title: "삭제하기",
+          onClick: this.onDeleteButtonClick
         },
         "secondary"
       )
@@ -421,6 +452,16 @@ const DetailModalButtonContainer = {
       )
     );
     return buttonContainerElement;
+  },
+  onDeleteButtonClick() {
+    const id = Number($(".restaurant-detail img").id);
+    const deletedList = RestaurantListUtils.delete(
+      LocalStorage.getJSON(RESTAURANT_LIST_KEY),
+      id
+    );
+    LocalStorage.setJSON(RESTAURANT_LIST_KEY, deletedList);
+    Renderer.restaurantList();
+    Modal.close("detail");
   }
 };
 const DetailModalContent = {
@@ -446,19 +487,6 @@ const DetailModalContent = {
         <p class="restaurant__link text-body">${link ? link : ""}</p>
     </div>
   `;
-    this.handleDeleteButton(id);
-    this.handleFavoriteButton();
-  },
-  handleDeleteButton(id) {
-    $("#delete__button").onclick = () => {
-      const deletedList = RestaurantListUtils.delete(
-        LocalStorage.getJSON(RESTAURANT_LIST_KEY),
-        id
-      );
-      LocalStorage.setJSON(RESTAURANT_LIST_KEY, deletedList);
-      this.renderAll();
-      Modal.close("detail");
-    };
   },
   handleFavoriteButton() {
     $(".restaurant-detail .restaurant__favorite").addEventListener(
@@ -472,13 +500,7 @@ const DetailModalContent = {
           Number(e.target.id)
         );
         LocalStorage.setJSON(RESTAURANT_LIST_KEY, favoriteList);
-        state.setCurrentRestaurantList(
-          RestaurantListUtils.favoriteById(
-            state.currentRestaurantList,
-            Number(e.target.id)
-          )
-        );
-        this.renderAll();
+        Renderer.restaurantList();
       }
     );
   },
@@ -491,16 +513,6 @@ const DetailModalContent = {
     if (alt == "noFavoriteIcon") {
       target.alt = "favoriteIcon";
       target.src = "./favorite-icon-filled.png";
-    }
-  },
-  renderAll() {
-    if (state.currentRestaurantListId === "allRestaurant")
-      FilterSelect.applyFilter("allRestaurant");
-    if (state.currentRestaurantListId === "favoriteRestaurant") {
-      const favoriteRestaurantList = RestaurantListUtils.getFavoriteList(
-        LocalStorage.getJSON(RESTAURANT_LIST_KEY)
-      );
-      RestaurantList.applyList("favoriteRestaurant", favoriteRestaurantList);
     }
   }
 };
@@ -533,6 +545,7 @@ const LunchInfoCard = {
         link,
         favorite
       });
+      DetailModalContent.handleFavoriteButton();
     });
     return LunchInfoCardElement;
   }
@@ -556,30 +569,16 @@ const RestaurantList = {
       Number(target.id)
     );
     LocalStorage.setJSON(RESTAURANT_LIST_KEY, favoriteList);
-    state.setCurrentRestaurantList(
-      RestaurantListUtils.favoriteById(
-        state.currentRestaurantList,
-        Number(target.id)
-      )
-    );
-    this.applyState(restaurantListId);
-  },
-  applyData(restaurantListId) {
-    this.applyList(restaurantListId, LocalStorage.getJSON(RESTAURANT_LIST_KEY));
-  },
-  applyState(restaurantListId) {
-    this.applyList(restaurantListId, state.currentRestaurantList);
+    Renderer.restaurantList();
   },
   applyList(restaurantListId, restaurantList) {
-    state.setCurrentRestaurantList(restaurantList);
     const restaurantElementList = this.getRestaurantElementList(restaurantList);
     this.applyElements(restaurantListId, restaurantElementList);
   },
   applyElements(restaurantListId, elements) {
-    $(`.restaurant-list[id=${restaurantListId}]`).replaceChildren();
-    elements.forEach(
-      (element) => $(`.restaurant-list[id=${restaurantListId}]`).appendChild(element)
-    );
+    const restaurantListElement = $(`.restaurant-list[id=${restaurantListId}]`);
+    restaurantListElement.replaceChildren();
+    elements.forEach((element) => restaurantListElement.appendChild(element));
   },
   getRestaurantElementList(restaurantList) {
     return restaurantList.map(
@@ -596,51 +595,25 @@ const RestaurantList = {
     );
   }
 };
-const FilterSelect = {
-  create({ id, name, dropdownList }) {
-    const filterElement = document.createElement("select");
-    filterElement.id = id;
-    filterElement.name = name;
-    filterElement.classList.add("restaurant-filter");
-    filterElement.innerHTML = /*html*/
-    `
-    ${dropdownList.map(({ label, value }) => `<option value="${value}">${label}</option>`).join("\n")}
-    `;
-    filterElement.addEventListener(
-      "change",
-      (e) => this.applyFilter("allRestaurant")
-    );
-    return filterElement;
+const Renderer = {
+  restaurantList() {
+    const isAllRestaurantActivated = $(
+      ".all_restaurant_nav"
+    ).classList.contains("activated");
+    const isFavoriteRestaurantActivated = $(
+      ".favorite_restaurant_nav"
+    ).classList.contains("activated");
+    if (isAllRestaurantActivated) this.filteredList("allRestaurant");
+    if (isFavoriteRestaurantActivated) {
+      const favoriteRestaurantList = RestaurantListUtils.getFavoriteList(
+        LocalStorage.getJSON(RESTAURANT_LIST_KEY)
+      );
+      RestaurantList.applyList("favoriteRestaurant", favoriteRestaurantList);
+    }
   },
-  applyFilter(restaurantListId) {
-    const category = $("#category-filter").value;
-    const sortingRule = $("#sorting-filter").value;
-    const filteredListByCategory = this.getFilteredListByCategory(
-      LocalStorage.getJSON(RESTAURANT_LIST_KEY),
-      category
-    );
-    const filteredListByBoth = this.getFilteredListBySorting(
-      filteredListByCategory,
-      sortingRule
-    );
-    RestaurantList.applyList(restaurantListId, filteredListByBoth);
-  },
-  getFilteredListByCategory(restaurantList, category) {
-    const filteredList = RestaurantListUtils.filterByCategory(
-      restaurantList,
-      category
-    );
-    return filteredList;
-  },
-  getFilteredListBySorting(restaurantList, sortingRule) {
-    let filteredList = [...restaurantList];
-    if (sortingRule === "id")
-      filteredList = RestaurantListUtils.sortById(filteredList);
-    if (sortingRule === "name")
-      filteredList = RestaurantListUtils.sortByName(filteredList);
-    if (sortingRule === "distance")
-      filteredList = RestaurantListUtils.sortByDistance(filteredList);
-    return filteredList;
+  filteredList(restaurantListId) {
+    const filteredList = FilterSelect.getFilteredList();
+    RestaurantList.applyList(restaurantListId, filteredList);
   }
 };
 const AddLunchModalForm = {
@@ -704,7 +677,7 @@ const AddLunchModalForm = {
     try {
       this.validateFormInputs({ name, link, description });
       this.addRestaurant({ category, name, distance, description, link });
-      FilterSelect.applyFilter("allRestaurant");
+      Renderer.filteredList("allRestaurant");
       Modal.close("addLunch");
       Modal.reset("addLunch");
     } catch (e) {
@@ -805,25 +778,19 @@ function initLocalStorage() {
 }
 function initNavigationButton() {
   $(".navigation-bar-container").addEventListener("click", (e) => {
-    $$("main section").forEach((section) => section.style.display = "none");
-    if (e.target.classList.contains("all_restaurant_nav")) {
-      FilterSelect.applyFilter("allRestaurant");
-      DOM.$filterContainer.style.display = "flex";
-      DOM.$restaurantContainer.style.display = "block";
-      state.setCurrentRestaurantListId("allRestaurant");
-    }
-    if (e.target.classList.contains("favorite_restaurant_nav")) {
-      const favoriteRestaurantList = RestaurantListUtils.getFavoriteList(
-        LocalStorage.getJSON(RESTAURANT_LIST_KEY)
-      );
-      RestaurantList.applyList("favoriteRestaurant", favoriteRestaurantList);
-      DOM.$favoriteContainer.style.display = "block";
-      state.setCurrentRestaurantListId("favoriteRestaurant");
-    }
     $$(".navigation__button").forEach(
       (btn) => btn.classList.remove("activated")
     );
     e.target.classList.add("activated");
+    $$("main section").forEach((section) => section.style.display = "none");
+    if (e.target.classList.contains("all_restaurant_nav")) {
+      DOM.$filterContainer.style.display = "flex";
+      DOM.$restaurantContainer.style.display = "block";
+    }
+    if (e.target.classList.contains("favorite_restaurant_nav")) {
+      DOM.$favoriteContainer.style.display = "block";
+    }
+    Renderer.restaurantList();
   });
 }
 function initFilterSelect() {
@@ -842,7 +809,7 @@ function initFilterSelect() {
 }
 function initRestaurantList() {
   DOM.$restaurantContainer.append(RestaurantList.create("allRestaurant"));
-  RestaurantList.applyData("allRestaurant");
+  Renderer.restaurantList();
 }
 function initFavoriteList() {
   DOM.$favoriteContainer.append(RestaurantList.create("favoriteRestaurant"));
